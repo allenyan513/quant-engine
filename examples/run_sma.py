@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.engine import BacktestEngine
 from engine.data.data_feed import YFinanceFeed
 from engine.analytics.metrics import print_report
+from engine.analytics.chart import plot_backtest
 from strategies.sma_crossover import SMACrossover
 
 
@@ -49,6 +50,14 @@ def main():
     for sym, pos in portfolio.positions.items():
         if pos.quantity != 0:
             print(f"  {sym}: {pos.quantity} shares @ ${pos.avg_cost:.2f}")
+
+    # 可视化
+    plot_backtest(
+        portfolio=portfolio,
+        bar_data=engine.bar_data,
+        title=f"SMA Crossover ({symbol}) — 2023-2024",
+        save_path="backtest_result.png",
+    )
 
 
 if __name__ == "__main__":
