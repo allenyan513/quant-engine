@@ -11,3 +11,4 @@ venv/
 data_cache/
 .DS_Store
 *.csv
+outputs/

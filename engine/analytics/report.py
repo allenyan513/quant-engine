@@ -214,6 +214,8 @@ def _plot_full_report(
     strategy_name: str,
     metrics: dict,
 ) -> None:
+    from collections import defaultdict
+
     timestamps = [t for t, _ in portfolio.equity_curve]
     equities = np.array([e for _, e in portfolio.equity_curve])
     norm_equity = equities / equities[0] * 100
@@ -225,7 +227,7 @@ def _plot_full_report(
     has_exposure = len(engine.exposure_curve) > 0
     has_turnover = len(engine.turnover_curve) > 0
 
-    # Determine subplot layout
+    # Determine subplot layout: header + charts
     rows = ["equity", "drawdown"]
     ratios = [3, 1.5]
     if has_exposure:
@@ -235,23 +237,98 @@ def _plot_full_report(
         rows.append("turnover")
         ratios.append(1.2)
 
-    n_rows = len(rows)
+    n_chart_rows = len(rows)
+    # Add header row for KPI banner (title + KPIs)
+    all_ratios = [1.0] + ratios
+    n_rows = 1 + n_chart_rows
+
     fig, axes = plt.subplots(
         n_rows, 1,
-        figsize=(14, 3.2 * n_rows),
-        gridspec_kw={"height_ratios": ratios},
-        sharex=True,
+        figsize=(14, 3.2 * n_chart_rows + 2.0),
+        gridspec_kw={"height_ratios": all_ratios},
     )
-    if n_rows == 1:
-        axes = [axes]
 
-    fig.suptitle(f"{strategy_name}  ({engine.start} ~ {engine.end})",
-                 fontsize=15, fontweight="bold", y=0.98)
+    # ── Header: title + KPI banner ──
+    ax_header = axes[0]
+    ax_header.set_xlim(0, 1)
+    ax_header.set_ylim(0, 1)
+    ax_header.axis("off")
+
+    # Clean white background
+    ax_header.add_patch(plt.Rectangle((0, 0), 1, 1,
+                        transform=ax_header.transAxes, facecolor="white",
+                        edgecolor="none", zorder=0))
+
+    # ── Title row: strategy name (large) + period (muted) ──
+    ax_header.text(0.02, 0.88, strategy_name,
+                   transform=ax_header.transAxes, ha="left", va="top",
+                   fontsize=16, fontweight="bold", color="#1a1a1a",
+                   fontfamily="sans-serif")
+    ax_header.text(0.98, 0.88, f"{engine.start}  ~  {engine.end}",
+                   transform=ax_header.transAxes, ha="right", va="top",
+                   fontsize=11, color="#999999", fontfamily="sans-serif")
+
+    # Thin separator line between title and KPIs
+    ax_header.plot([0.02, 0.98], [0.68, 0.68], transform=ax_header.transAxes,
+                   color="#e8e8e8", linewidth=1.0, zorder=1)
+
+    # ── KPI values ──
+    final_equity = metrics["final_equity"]
+    initial_equity = metrics["initial_equity"]
+    net_profit = final_equity - initial_equity
+    total_return = metrics["total_return"]
+    sharpe = metrics["sharpe_ratio"]
+    max_dd = metrics["max_drawdown"]
+    psr_val = metrics["psr"]
+    vol = metrics["volatility"]
+
+    holdings_val = 0.0
+    for sym, pos in portfolio.positions.items():
+        if pos.quantity != 0:
+            bar = engine.bar_data.current(sym)
+            if bar:
+                holdings_val += pos.quantity * bar.close
+
+    total_fees = sum(t.commission for t in engine.trade_log.trades)
+
+    kpis = [
+        ("Equity",     f"${final_equity:,.0f}",   final_equity >= initial_equity),
+        ("Net Profit", f"${net_profit:+,.0f}",     net_profit >= 0),
+        ("Return",     f"{total_return:+.2%}",     total_return >= 0),
+        ("Sharpe",     f"{sharpe:.3f}",            sharpe >= 0),
+        ("Max DD",     f"{max_dd:.2%}",            False),
+        ("PSR",        f"{psr_val:.2%}",           psr_val >= 0.5),
+        ("Holdings",   f"${holdings_val:,.0f}",    holdings_val >= 0),
+        ("Fees",       f"-${total_fees:,.0f}",     False),
+        ("Volatility", f"{vol:.2%}",               vol < 0.2),
+    ]
+
+    n_kpis = len(kpis)
+    pad_l, pad_r = 0.02, 0.02
+    usable = 1.0 - pad_l - pad_r
+    for i, (label, value, is_good) in enumerate(kpis):
+        x = pad_l + usable * (i + 0.5) / n_kpis
+        color = "#2e7d32" if is_good else "#c62828"
+        ax_header.text(x, 0.42, value, transform=ax_header.transAxes,
+                       ha="center", va="center", fontsize=14, fontweight="bold",
+                       color=color, fontfamily="monospace")
+        ax_header.text(x, 0.10, label, transform=ax_header.transAxes,
+                       ha="center", va="center", fontsize=9,
+                       color="#aaaaaa", fontweight="medium", fontfamily="sans-serif")
+
+    # Bottom border of header
+    ax_header.plot([0, 1], [0, 0], transform=ax_header.transAxes,
+                   color="#e0e0e0", linewidth=1.5, zorder=1)
+
+    # Share x-axis for chart rows only
+    chart_axes = list(axes[1:])
+    for ax in chart_axes[1:]:
+        ax.sharex(chart_axes[0])
 
     ax_idx = 0
 
     # ── Equity Curve ──
-    ax = axes[ax_idx]; ax_idx += 1
+    ax = chart_axes[ax_idx]; ax_idx += 1
     ax.plot(timestamps, norm_equity, color="#2196F3", linewidth=1.8, label="Strategy", zorder=3)
     ax.fill_between(timestamps, norm_equity, 100, alpha=0.06, color="#2196F3")
 
@@ -263,23 +340,13 @@ def _plot_full_report(
                 label=benchmark_label, linestyle="--", alpha=0.85, zorder=2)
 
     ax.axhline(100, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
-
-    info_parts = [
-        f"Return: {metrics['total_return']:.1%}",
-        f"CAGR: {metrics['cagr']:.1%}",
-        f"Sharpe: {metrics['sharpe_ratio']:.2f}",
-        f"PSR: {metrics['psr']:.1%}",
-        f"MaxDD: {metrics['max_drawdown']:.1%}",
-    ]
-    ax.text(0.5, 1.02, "  |  ".join(info_parts),
-            transform=ax.transAxes, ha="center", fontsize=9, color="#555555")
     ax.set_ylabel("Growth of $100")
     ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:,.0f}"))
     ax.legend(loc="upper left", framealpha=0.9, fontsize=10)
     ax.grid(True, alpha=0.3)
 
     # ── Drawdown ──
-    ax = axes[ax_idx]; ax_idx += 1
+    ax = chart_axes[ax_idx]; ax_idx += 1
     ax.fill_between(timestamps, drawdown, 0, color="#F44336", alpha=0.35, label="Strategy")
     ax.plot(timestamps, drawdown, color="#F44336", linewidth=0.8)
 
@@ -307,7 +374,7 @@ def _plot_full_report(
 
     # ── Exposure ──
     if has_exposure:
-        ax = axes[ax_idx]; ax_idx += 1
+        ax = chart_axes[ax_idx]; ax_idx += 1
         exp_ts = [t for t, _, _ in engine.exposure_curve]
         long_r = np.array([lr for _, lr, _ in engine.exposure_curve])
         short_r = np.array([sr for _, _, sr in engine.exposure_curve])
@@ -318,29 +385,47 @@ def _plot_full_report(
         ax.plot(exp_ts, net, color="#333333", linewidth=1.0, label="Net", alpha=0.8)
 
         ax.axhline(0, color="gray", linestyle="-", linewidth=0.5, alpha=0.5)
-        ax.set_ylabel("Exposure (ratio)")
+        ax.set_ylabel("Exposure")
         ax.legend(loc="upper right", framealpha=0.9, fontsize=8, ncol=3)
         ax.grid(True, alpha=0.3)
 
-    # ── Turnover ──
+    # ── Turnover (aggregated monthly) ──
     if has_turnover:
-        ax = axes[ax_idx]; ax_idx += 1
-        turn_ts = [t for t, _ in engine.turnover_curve]
-        turn_v = np.array([v for _, v in engine.turnover_curve])
+        ax = chart_axes[ax_idx]; ax_idx += 1
 
-        ax.bar(turn_ts, turn_v, width=1, color="#7E57C2", alpha=0.6)
-        ax.set_ylabel("Turnover")
+        # Aggregate daily turnover → monthly sum
+        monthly: dict[str, float] = defaultdict(float)
+        for ts, tv in engine.turnover_curve:
+            key = ts.strftime("%Y-%m")
+            monthly[key] += tv
+
+        month_dates = [datetime.strptime(k + "-15", "%Y-%m-%d") for k in sorted(monthly)]
+        month_vals = [monthly[k] * 100 for k in sorted(monthly)]  # as percentage
+
+        bar_width = 20  # ~20 days per bar
+        bars = ax.bar(month_dates, month_vals, width=bar_width,
+                       color="#7E57C2", alpha=0.7, edgecolor="#5E35B1", linewidth=0.3)
+
+        # Color bars by intensity
+        if month_vals:
+            max_v = max(month_vals) if max(month_vals) > 0 else 1
+            for bar, v in zip(bars, month_vals):
+                alpha = 0.3 + 0.7 * (v / max_v)
+                bar.set_alpha(alpha)
+
+        ax.set_ylabel("Turnover (%/mo)")
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x:.0f}%"))
         ax.grid(True, alpha=0.3)
 
     # ── X axis ──
-    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    chart_axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     date_range = (timestamps[-1] - timestamps[0]).days
     if date_range > 365 * 5:
-        axes[-1].xaxis.set_major_locator(mdates.MonthLocator(interval=6))
+        chart_axes[-1].xaxis.set_major_locator(mdates.MonthLocator(interval=6))
     elif date_range > 365 * 2:
-        axes[-1].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+        chart_axes[-1].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
     else:
-        axes[-1].xaxis.set_major_locator(mdates.MonthLocator(interval=2))
+        chart_axes[-1].xaxis.set_major_locator(mdates.MonthLocator(interval=2))
     plt.xticks(rotation=45)
 
     plt.tight_layout()
