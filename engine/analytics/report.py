@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.ticker import FuncFormatter
 
-from engine.analytics.metrics import TradeLog, calculate_metrics
+from engine.analytics.metrics import TradeLog, calculate_metrics, get_environment_info
 from engine.portfolio.portfolio import Portfolio
 
 
@@ -194,6 +194,22 @@ def _write_text_report(
             mv = pos.quantity * bar.close if bar else 0
             pct = mv / portfolio.equity * 100 if portfolio.equity > 0 else 0
             w(f"  {sym:<10} {pos.quantity:>8} shares  ${mv:>12,.0f}  ({pct:>5.1f}%)")
+
+    # Environment info
+    env = get_environment_info(engine)
+    w("")
+    w("─── Environment ───────────────────────────────────────")
+    w(f"  Python:             {env['python_version']}")
+    w(f"  Platform:           {env['platform']}")
+    w(f"  NumPy:              {env['numpy_version']}")
+    w(f"  SciPy:              {env['scipy_version']}")
+    w(f"  yfinance:           {env['yfinance_version']}")
+    w(f"  matplotlib:         {env['matplotlib_version']}")
+    if "strategy" in env:
+        w(f"  Strategy:           {env['strategy']}")
+        w(f"  Data Feed:          {env['data_feed']}")
+        w(f"  Fee Model:          {env['fee_model']}")
+        w(f"  Slippage Rate:      {env['slippage_rate']:.4%}")
 
     w("")
     w("=" * 60)
