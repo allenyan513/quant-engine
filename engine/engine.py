@@ -17,6 +17,7 @@ from engine.data.data_feed import DataFeed
 from engine.execution.broker import SimulatedBroker
 from engine.execution.fee_model import FeeModel
 from engine.portfolio.portfolio import Portfolio
+from engine.risk.risk_manager import RiskManager
 from engine.strategy.base import BaseStrategy
 
 # Lazy imports for benchmark
@@ -38,12 +39,14 @@ class BacktestEngine:
         slippage_rate: float = 0.0005,
         # 向后兼容
         commission_rate: float | None = None,
+        risk_manager: RiskManager | None = None,
     ) -> None:
         self.strategy = strategy
         self.data_feed = data_feed
         self.symbols = symbols
         self.start = start
         self.end = end
+        self.risk_manager = risk_manager
 
         self.bar_data = BarData()
         self.portfolio = Portfolio(initial_cash=initial_cash)
@@ -145,6 +148,14 @@ class BacktestEngine:
                 self.turnover_curve.append((timestamp, delta / (2 * equity)))
                 self._prev_holdings = curr_holdings
 
+            # 3d-0. 风控 on_bar (回撤熔断清仓等)
+            if self.risk_manager is not None:
+                risk_orders = self.risk_manager.on_bar(
+                    self.portfolio, self.bar_data,
+                )
+                for order in risk_orders:
+                    self.broker.submit_order(order)
+
             # 3d. 检查止损管理器
             stop_orders = self.strategy._collect_stop_orders()
             for order in stop_orders:
@@ -153,16 +164,30 @@ class BacktestEngine:
             # 3e. 调用策略
             self.strategy.on_bar()
 
-            # 3f. 收集订单
+            # 3f. 收集订单 (经过风控过滤)
             orders = self.strategy._collect_orders()
             for order in orders:
-                self.broker.submit_order(order)
+                self._submit_with_risk_check(order)
 
         # 自动获取 SPY 基准
         self.benchmark_curve = self._fetch_spy_benchmark()
 
         print(f"Backtest complete. Final equity: ${self.portfolio.equity:,.2f}")
         return self.portfolio
+
+    def _submit_with_risk_check(self, order) -> None:
+        """提交订单，如果有 RiskManager 则先做风控检查。"""
+        if self.risk_manager is None:
+            self.broker.submit_order(order)
+            return
+
+        result = self.risk_manager.check_order(
+            order, self.portfolio, self.bar_data,
+        )
+        if result.approved:
+            self.broker.submit_order(
+                result.adjusted_order if result.adjusted_order else order
+            )
 
     def _fetch_spy_benchmark(self) -> list[tuple[datetime, float]] | None:
         """自动获取 SPY 数据，构建基准净值曲线（与 QC 一致）。"""
