@@ -35,7 +35,14 @@
       "Bash(python3 -c \"from engine.export.quantconnect import QCExporter; QCExporter\\(\\)\")",
       "Bash(python -c \"from engine.analytics.report import generate_report; from scipy.stats import norm; print\\(''OK''\\)\")",
       "Bash(python -c \":*)",
-      "Bash(python -m examples.run_reports_demo)"
+      "Bash(python -m examples.run_reports_demo)",
+      "Bash(git status:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(python -m pytest tests/test_fee_model.py -x -q)",
+      "Bash(python -m examples.run_walk_forward)",
+      "Bash(claude --version)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:docs.docker.com)"
     ]
   }
 }
