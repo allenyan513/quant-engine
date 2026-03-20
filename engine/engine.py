@@ -18,6 +18,9 @@ from engine.execution.broker import SimulatedBroker
 from engine.portfolio.portfolio import Portfolio
 from engine.strategy.base import BaseStrategy
 
+# Lazy imports for benchmark
+_benchmark_cache: dict[str, list[tuple[datetime, float]]] = {}
+
 
 class BacktestEngine:
     """回测引擎。"""
@@ -46,6 +49,14 @@ class BacktestEngine:
             commission_rate=commission_rate,
             slippage_rate=slippage_rate,
         )
+
+        # Exposure & Turnover time series
+        self.exposure_curve: list[tuple[datetime, float, float]] = []
+        self.turnover_curve: list[tuple[datetime, float]] = []
+        self._prev_holdings: dict[str, float] = {}
+
+        # Auto SPY benchmark (populated after run)
+        self.benchmark_curve: list[tuple[datetime, float]] | None = None
 
     def run(self) -> Portfolio:
         """
@@ -102,6 +113,34 @@ class BacktestEngine:
             timestamp = list(current_bars.values())[0].timestamp
             self.portfolio.update_equity(self.bar_data, timestamp)
 
+            # 3c-2. 记录 Exposure & Turnover
+            equity = self.portfolio.equity
+            if equity > 0:
+                long_val = 0.0
+                short_val = 0.0
+                curr_holdings: dict[str, float] = {}
+                for sym, pos in self.portfolio.positions.items():
+                    if pos.quantity != 0:
+                        bar = self.bar_data.current(sym)
+                        if bar:
+                            mv = pos.quantity * bar.close
+                            curr_holdings[sym] = mv
+                            if mv > 0:
+                                long_val += mv
+                            else:
+                                short_val += mv
+                self.exposure_curve.append((
+                    timestamp, long_val / equity, short_val / equity,
+                ))
+                # Turnover = sum(|delta_holdings|) / (2 * equity)
+                all_syms = set(curr_holdings) | set(self._prev_holdings)
+                delta = sum(
+                    abs(curr_holdings.get(s, 0.0) - self._prev_holdings.get(s, 0.0))
+                    for s in all_syms
+                )
+                self.turnover_curve.append((timestamp, delta / (2 * equity)))
+                self._prev_holdings = curr_holdings
+
             # 3d. 检查止损管理器
             stop_orders = self.strategy._collect_stop_orders()
             for order in stop_orders:
@@ -115,6 +154,34 @@ class BacktestEngine:
             for order in orders:
                 self.broker.submit_order(order)
 
-        # 处理最后的待处理订单
+        # 自动获取 SPY 基准
+        self.benchmark_curve = self._fetch_spy_benchmark()
+
         print(f"Backtest complete. Final equity: ${self.portfolio.equity:,.2f}")
         return self.portfolio
+
+    def _fetch_spy_benchmark(self) -> list[tuple[datetime, float]] | None:
+        """自动获取 SPY 数据，构建基准净值曲线（与 QC 一致）。"""
+        try:
+            from engine.data import CachedFeed, YFinanceFeed
+
+            cache_key = f"SPY_{self.start}_{self.end}"
+            if cache_key in _benchmark_cache:
+                return _benchmark_cache[cache_key]
+
+            feed = CachedFeed(YFinanceFeed())
+            bars = feed.fetch("SPY", self.start, self.end)
+            if not bars:
+                return None
+
+            # 用收盘价构建归一化净值曲线（初始值 = 策略初始资金）
+            initial = self.portfolio.initial_cash
+            base_price = bars[0].close
+            curve = [
+                (bar.timestamp, initial * bar.close / base_price)
+                for bar in bars
+            ]
+            _benchmark_cache[cache_key] = curve
+            return curve
+        except Exception:
+            return None

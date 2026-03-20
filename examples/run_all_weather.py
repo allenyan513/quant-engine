@@ -21,6 +21,7 @@ from engine.engine import BacktestEngine
 from engine.data import YFinanceFeed, CachedFeed
 from engine.analytics.metrics import print_report, calculate_metrics
 from engine.analytics.chart import plot_backtest
+from engine.analytics.report import generate_report
 from strategies.all_weather_momentum import AllWeatherMomentum
 from strategies.buy_and_hold import BuyAndHold
 
@@ -158,7 +159,7 @@ def main():
     print("\n" + "=" * 70)
     print(f"DETAILED REPORT: {btc_name} — {full_label}")
     print("=" * 70)
-    print_report(btc_p, benchmark_curve=bench_p.equity_curve)
+    print_report(btc_p, engine=btc_e)
 
     print("\nCurrent Holdings:")
     for sym, pos in btc_p.positions.items():
@@ -169,17 +170,11 @@ def main():
             print(f"  {sym}: {pos.quantity} shares, "
                   f"${mkt_val:,.0f} ({pct:.1f}%)")
 
-    # ── 可视化: BTC 版本 vs SPY ──────────────────────────────
-    plot_backtest(
-        portfolio=btc_p,
-        bar_data=btc_e.bar_data,
-        benchmark=bench_p,
-        benchmark_label="SPY Buy & Hold",
-        title=f"All-Weather + BTC vs SPY ({periods[-1][0][:4]}-{periods[-1][1][:4]})",
-        save_path="backtest_all_weather.png",
-        show=False,
+    # ── 输出完整报告 (benchmark 自动使用 SPY) ─────────────────
+    generate_report(
+        engine=btc_e,
+        strategy_name=f"All-Weather + BTC ({periods[-1][0][:4]}-{periods[-1][1][:4]})",
     )
-    print("\n✅ Chart saved to backtest_all_weather.png")
 
 
 if __name__ == "__main__":

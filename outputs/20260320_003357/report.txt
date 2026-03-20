@@ -1,0 +1,55 @@
+============================================================
+  BACKTEST REPORT: Dual Momentum (TQQQ/QQQ)
+  Generated: 2026-03-20 00:33:57
+  Period: 2015-01-01 ~ 2025-12-31
+============================================================
+
+─── Performance ───────────────────────────────────────
+  Initial Equity:     $    100,000.00
+  Final Equity:       $    466,638.47
+  Total Return:              366.64%
+  CAGR:                       15.03%
+  Volatility:                 47.12%
+  Max Drawdown:              -69.76%
+
+─── Risk-Adjusted ─────────────────────────────────────
+  Sharpe Ratio:                 0.54
+  Sortino Ratio:                0.57
+  Calmar Ratio:                 0.22
+  PSR:                       100.00%
+  Expectancy:              -0.000680
+  Win Rate (daily):           51.18%
+
+─── vs SPY Buy & Hold ──────────────────────────────
+  Benchmark Return:          302.73%
+  Alpha:                      63.91%
+  Beta:                       1.8795
+  Information Ratio:            0.30
+  Tracking Error:             0.3669
+  Treynor Ratio:                0.08
+
+─── Exposure ──────────────────────────────────────────
+  Avg Long Ratio:             90.84%
+  Avg Short Ratio:             0.00%
+  Avg Net Exposure:           90.84%
+
+─── Turnover ──────────────────────────────────────────
+  Avg Daily Turnover:        1.8188%
+  Total Turnover:           5027.27%
+
+─── Trades ────────────────────────────────────────────
+  Total Trades:                   27
+  Win / Loss:             16 / 11    
+  Trade Win Rate:             59.26%
+  Avg Win:            $     35,038.62
+  Avg Loss:           $    -26,183.02
+  Profit Factor:                1.95
+  Largest Win:        $    194,553.38
+  Largest Loss:       $   -125,799.67
+  Avg Holding Days:            131.2
+  Total PnL:          $    272,604.63
+
+─── Current Holdings ──────────────────────────────────
+  TQQQ           8604 shares  $     465,476  ( 99.8%)
+
+============================================================

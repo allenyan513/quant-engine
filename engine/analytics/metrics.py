@@ -211,6 +211,28 @@ def calculate_metrics(
     total_days = len(returns)
     win_rate = winning_days / total_days if total_days > 0 else 0.0
 
+    # Probabilistic Sharpe Ratio (PSR)
+    # PSR = Φ((Sharpe - 0) * sqrt(n-1) / sqrt(1 - skew*Sharpe + (kurt-1)/4 * Sharpe^2))
+    from scipy.stats import norm as _norm, skew as _skew_fn, kurtosis as _kurt_fn
+    n = len(returns)
+    if n > 2 and returns.std() > 0:
+        skewness = float(_skew_fn(returns))
+        excess_kurt = float(_kurt_fn(returns, fisher=True))
+        denom = max(1e-10, (1 - skewness * sharpe + (excess_kurt) / 4 * sharpe ** 2)) ** 0.5
+        psr = float(_norm.cdf(sharpe * ((n - 1) ** 0.5) / denom))
+    else:
+        psr = 0.0
+
+    # Expectancy = Win Rate * Avg Win - Loss Rate * |Avg Loss|  (per trade)
+    # Computed at portfolio level from daily returns
+    winning_returns = returns[returns > 0]
+    losing_returns = returns[returns < 0]
+    if len(winning_returns) > 0 and len(losing_returns) > 0:
+        expectancy = (win_rate * winning_returns.mean()
+                      - (1 - win_rate) * abs(losing_returns.mean()))
+    else:
+        expectancy = 0.0
+
     metrics = {
         "total_return": total_return,
         "cagr": cagr,
@@ -218,6 +240,8 @@ def calculate_metrics(
         "sharpe_ratio": sharpe,
         "sortino_ratio": sortino,
         "calmar_ratio": calmar,
+        "psr": psr,
+        "expectancy": expectancy,
         "win_rate": win_rate,
         "total_trades_days": total_days,
         "initial_equity": equities[0],
@@ -254,6 +278,15 @@ def calculate_metrics(
         else:
             metrics["information_ratio"] = 0.0
 
+        # Tracking Error (annualized)
+        metrics["tracking_error"] = tracking.std() * np.sqrt(252) if tracking.std() > 0 else 0.0
+
+        # Treynor Ratio = (Portfolio Return - Rf) / Beta
+        if metrics.get("beta", 0) != 0:
+            metrics["treynor_ratio"] = (cagr - risk_free_rate) / metrics["beta"]
+        else:
+            metrics["treynor_ratio"] = 0.0
+
     return metrics
 
 
@@ -261,8 +294,16 @@ def print_report(
     portfolio: Portfolio,
     trade_log: TradeLog | None = None,
     benchmark_curve: list[tuple[datetime, float]] | None = None,
+    engine=None,
 ) -> None:
-    """打印回测报告。"""
+    """
+    打印回测报告。
+
+    如果传入 engine，自动使用 engine.benchmark_curve (SPY)。
+    也可以手动传 benchmark_curve 覆盖。
+    """
+    if benchmark_curve is None and engine is not None:
+        benchmark_curve = getattr(engine, "benchmark_curve", None)
     metrics = calculate_metrics(portfolio, benchmark_curve)
     if not metrics:
         print("No data to report.")
@@ -281,6 +322,8 @@ def print_report(
     print(f"  Sharpe Ratio:     {metrics['sharpe_ratio']:>12.2f}")
     print(f"  Sortino Ratio:    {metrics['sortino_ratio']:>12.2f}")
     print(f"  Calmar Ratio:     {metrics['calmar_ratio']:>12.2f}")
+    print(f"  PSR:              {metrics['psr']:>12.2%}")
+    print(f"  Expectancy:       {metrics['expectancy']:>12.6f}")
     print(f"  Win Rate (daily): {metrics['win_rate']:>12.2%}")
     print(f"  Realized PnL:     ${metrics['realized_pnl']:>12,.2f}")
 
@@ -291,6 +334,10 @@ def print_report(
         print(f"  Alpha:            {metrics['alpha']:>12.2%}")
         print(f"  Beta:             {metrics['beta']:>12.2f}")
         print(f"  Information Ratio:{metrics['information_ratio']:>12.2f}")
+        if "tracking_error" in metrics:
+            print(f"  Tracking Error:   {metrics['tracking_error']:>12.4f}")
+        if "treynor_ratio" in metrics:
+            print(f"  Treynor Ratio:    {metrics['treynor_ratio']:>12.2f}")
 
     # Trade log
     if trade_log:

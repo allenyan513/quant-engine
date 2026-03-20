@@ -1,0 +1,52 @@
+============================================================
+  BACKTEST REPORT: SMA Crossover (AAPL)
+  Generated: 2026-03-20 00:33:53
+  Period: 2023-01-01 ~ 2025-12-31
+============================================================
+
+─── Performance ───────────────────────────────────────
+  Initial Equity:     $    100,000.00
+  Final Equity:       $    104,886.37
+  Total Return:                4.89%
+  CAGR:                        1.61%
+  Volatility:                  3.44%
+  Max Drawdown:               -7.14%
+
+─── Risk-Adjusted ─────────────────────────────────────
+  Sharpe Ratio:                 0.48
+  Sortino Ratio:                0.56
+  Calmar Ratio:                 0.23
+  PSR:                       100.00%
+  Expectancy:              -0.000695
+  Win Rate (daily):           32.44%
+
+─── vs SPY Buy & Hold ──────────────────────────────
+  Benchmark Return:           87.67%
+  Alpha:                     -82.79%
+  Beta:                       0.0834
+  Information Ratio:           -1.43
+  Tracking Error:             0.1443
+  Treynor Ratio:                0.19
+
+─── Exposure ──────────────────────────────────────────
+  Avg Long Ratio:             12.24%
+  Avg Short Ratio:             0.00%
+  Avg Net Exposure:           12.24%
+
+─── Turnover ──────────────────────────────────────────
+  Avg Daily Turnover:        0.4023%
+  Total Turnover:            301.71%
+
+─── Trades ────────────────────────────────────────────
+  Total Trades:                   13
+  Win / Loss:              5 / 8     
+  Trade Win Rate:             38.46%
+  Avg Win:            $      2,288.55
+  Avg Loss:           $       -819.55
+  Profit Factor:                1.75
+  Largest Win:        $      4,235.33
+  Largest Loss:       $     -2,510.78
+  Avg Holding Days:             50.0
+  Total PnL:          $      4,886.37
+
+============================================================
