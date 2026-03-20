@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from engine.analytics.metrics import TradeLog
 from engine.core.bar_data import Bar, BarData
 from engine.data.data_feed import DataFeed
 from engine.execution.broker import SimulatedBroker
@@ -40,6 +41,7 @@ class BacktestEngine:
 
         self.bar_data = BarData()
         self.portfolio = Portfolio(initial_cash=initial_cash)
+        self.trade_log = TradeLog()
         self.broker = SimulatedBroker(
             commission_rate=commission_rate,
             slippage_rate=slippage_rate,
@@ -93,16 +95,22 @@ class BacktestEngine:
             fills = self.broker.fill_orders(self.bar_data)
             for fill in fills:
                 self.portfolio.on_fill(fill)
+                self.trade_log.on_fill(fill)
                 self.strategy.on_fill(fill)
 
             # 3c. 更新组合净值
             timestamp = list(current_bars.values())[0].timestamp
             self.portfolio.update_equity(self.bar_data, timestamp)
 
-            # 3d. 调用策略
+            # 3d. 检查止损管理器
+            stop_orders = self.strategy._collect_stop_orders()
+            for order in stop_orders:
+                self.broker.submit_order(order)
+
+            # 3e. 调用策略
             self.strategy.on_bar()
 
-            # 3e. 收集订单
+            # 3f. 收集订单
             orders = self.strategy._collect_orders()
             for order in orders:
                 self.broker.submit_order(order)

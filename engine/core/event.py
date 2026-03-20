@@ -30,6 +30,8 @@ class Direction(Enum):
 class OrderType(Enum):
     MARKET = auto()
     LIMIT = auto()
+    STOP = auto()
+    STOP_LIMIT = auto()
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +64,7 @@ class OrderEvent:
     quantity: int
     order_type: OrderType = OrderType.MARKET
     limit_price: float | None = None
+    stop_price: float | None = None
     timestamp: datetime = field(default_factory=datetime.now)
 
 

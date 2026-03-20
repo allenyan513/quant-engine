@@ -1,16 +1,167 @@
 """
-回测结果分析 — Phase 1 基础指标。
+回测结果分析 — 核心指标 + 交易日志。
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from datetime import datetime
+
 import numpy as np
 
+from engine.core.event import Direction, FillEvent
 from engine.portfolio.portfolio import Portfolio
 
 
-def calculate_metrics(portfolio: Portfolio) -> dict:
-    """计算核心回测指标。"""
+# ---------------------------------------------------------------------------
+# Trade log
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Trade:
+    """一笔完整的交易（从开仓到平仓）。"""
+    symbol: str
+    direction: Direction
+    entry_time: datetime
+    entry_price: float
+    exit_time: datetime | None = None
+    exit_price: float | None = None
+    quantity: int = 0
+    pnl: float = 0.0
+    commission: float = 0.0
+
+    @property
+    def net_pnl(self) -> float:
+        return self.pnl - self.commission
+
+    @property
+    def return_pct(self) -> float:
+        if self.entry_price == 0:
+            return 0.0
+        if self.direction == Direction.LONG:
+            return ((self.exit_price or self.entry_price) / self.entry_price) - 1
+        else:
+            return (self.entry_price / (self.exit_price or self.entry_price)) - 1
+
+    @property
+    def holding_days(self) -> int:
+        if self.exit_time is None:
+            return 0
+        return (self.exit_time - self.entry_time).days
+
+
+class TradeLog:
+    """
+    交易日志 — 跟踪每笔交易的开仓/平仓。
+
+    通过 on_fill() 接收成交回报，自动配对为完整交易。
+    """
+
+    def __init__(self) -> None:
+        self.trades: list[Trade] = []
+        self._open_trades: dict[str, Trade] = {}  # symbol → 当前未平仓交易
+
+    def on_fill(self, fill: FillEvent) -> None:
+        """处理成交事件，更新交易日志。"""
+        symbol = fill.symbol
+
+        if symbol not in self._open_trades:
+            # 新开仓
+            self._open_trades[symbol] = Trade(
+                symbol=symbol,
+                direction=fill.direction,
+                entry_time=fill.timestamp,
+                entry_price=fill.fill_price,
+                quantity=fill.quantity,
+                commission=fill.commission,
+            )
+        else:
+            open_trade = self._open_trades[symbol]
+            if fill.direction == open_trade.direction:
+                # 加仓 — 更新均价
+                total_cost = (open_trade.entry_price * open_trade.quantity
+                              + fill.fill_price * fill.quantity)
+                open_trade.quantity += fill.quantity
+                open_trade.entry_price = total_cost / open_trade.quantity
+                open_trade.commission += fill.commission
+            else:
+                # 平仓（全部或部分）
+                close_qty = min(fill.quantity, open_trade.quantity)
+                if open_trade.direction == Direction.LONG:
+                    pnl = close_qty * (fill.fill_price - open_trade.entry_price)
+                else:
+                    pnl = close_qty * (open_trade.entry_price - fill.fill_price)
+
+                open_trade.exit_time = fill.timestamp
+                open_trade.exit_price = fill.fill_price
+                open_trade.pnl = pnl
+                open_trade.commission += fill.commission
+                self.trades.append(open_trade)
+
+                remaining = open_trade.quantity - close_qty
+                if remaining > 0:
+                    # 部分平仓后仍有持仓
+                    self._open_trades[symbol] = Trade(
+                        symbol=symbol,
+                        direction=open_trade.direction,
+                        entry_time=open_trade.entry_time,
+                        entry_price=open_trade.entry_price,
+                        quantity=remaining,
+                    )
+                elif fill.quantity > close_qty:
+                    # 反向开仓
+                    self._open_trades[symbol] = Trade(
+                        symbol=symbol,
+                        direction=fill.direction,
+                        entry_time=fill.timestamp,
+                        entry_price=fill.fill_price,
+                        quantity=fill.quantity - close_qty,
+                        commission=0.0,
+                    )
+                else:
+                    del self._open_trades[symbol]
+
+    def summary(self) -> dict:
+        """交易统计摘要。"""
+        if not self.trades:
+            return {"total_trades": 0}
+
+        pnls = [t.net_pnl for t in self.trades]
+        winners = [p for p in pnls if p > 0]
+        losers = [p for p in pnls if p <= 0]
+
+        return {
+            "total_trades": len(self.trades),
+            "winning_trades": len(winners),
+            "losing_trades": len(losers),
+            "win_rate": len(winners) / len(self.trades),
+            "avg_win": np.mean(winners) if winners else 0.0,
+            "avg_loss": np.mean(losers) if losers else 0.0,
+            "profit_factor": (sum(winners) / abs(sum(losers))) if losers and sum(losers) != 0 else float("inf"),
+            "largest_win": max(pnls),
+            "largest_loss": min(pnls),
+            "avg_holding_days": np.mean([t.holding_days for t in self.trades]),
+            "total_pnl": sum(pnls),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Metrics
+# ---------------------------------------------------------------------------
+
+def calculate_metrics(
+    portfolio: Portfolio,
+    benchmark_curve: list[tuple[datetime, float]] | None = None,
+    risk_free_rate: float = 0.0,
+) -> dict:
+    """
+    计算核心回测指标。
+
+    Args:
+        portfolio: 回测完成的 Portfolio 对象
+        benchmark_curve: 可选的基准净值曲线 [(timestamp, value), ...]
+        risk_free_rate: 年化无风险利率（默认 0）
+    """
     if len(portfolio.equity_curve) < 2:
         return {}
 
@@ -35,46 +186,125 @@ def calculate_metrics(portfolio: Portfolio) -> dict:
     drawdown = (equities - peak) / peak
     max_drawdown = drawdown.min()
 
-    # Sharpe Ratio (年化，假设无风险利率 = 0)
+    # 日无风险收益
+    daily_rf = (1 + risk_free_rate) ** (1 / 252) - 1
+    excess_returns = returns - daily_rf
+
+    # Sharpe Ratio
     if returns.std() > 0:
-        sharpe = returns.mean() / returns.std() * np.sqrt(252)
+        sharpe = excess_returns.mean() / returns.std() * np.sqrt(252)
     else:
         sharpe = 0.0
 
-    # 胜率
+    # Sortino Ratio（只用下行波动率）
+    downside = returns[returns < daily_rf] - daily_rf
+    if len(downside) > 0 and downside.std() > 0:
+        sortino = excess_returns.mean() / downside.std() * np.sqrt(252)
+    else:
+        sortino = 0.0
+
+    # Calmar Ratio (CAGR / |max_drawdown|)
+    calmar = cagr / abs(max_drawdown) if max_drawdown != 0 else 0.0
+
+    # 胜率（日级别）
     winning_days = (returns > 0).sum()
     total_days = len(returns)
     win_rate = winning_days / total_days if total_days > 0 else 0.0
 
-    return {
+    metrics = {
         "total_return": total_return,
         "cagr": cagr,
         "max_drawdown": max_drawdown,
         "sharpe_ratio": sharpe,
+        "sortino_ratio": sortino,
+        "calmar_ratio": calmar,
         "win_rate": win_rate,
         "total_trades_days": total_days,
         "initial_equity": equities[0],
         "final_equity": equities[-1],
         "realized_pnl": portfolio.realized_pnl,
+        "volatility": returns.std() * np.sqrt(252),
     }
 
+    # Benchmark comparison
+    if benchmark_curve and len(benchmark_curve) >= 2:
+        bm_values = np.array([v for _, v in benchmark_curve])
+        bm_returns = np.diff(bm_values) / bm_values[:-1]
 
-def print_report(portfolio: Portfolio) -> None:
+        # 对齐长度
+        min_len = min(len(returns), len(bm_returns))
+        aligned_ret = returns[:min_len]
+        aligned_bm = bm_returns[:min_len]
+
+        bm_total = (bm_values[-1] / bm_values[0]) - 1
+        metrics["benchmark_return"] = bm_total
+        metrics["alpha"] = total_return - bm_total
+
+        # Beta
+        cov = np.cov(aligned_ret, aligned_bm)
+        if cov.shape == (2, 2) and cov[1, 1] > 0:
+            metrics["beta"] = cov[0, 1] / cov[1, 1]
+        else:
+            metrics["beta"] = 0.0
+
+        # Information Ratio
+        tracking = aligned_ret - aligned_bm
+        if tracking.std() > 0:
+            metrics["information_ratio"] = tracking.mean() / tracking.std() * np.sqrt(252)
+        else:
+            metrics["information_ratio"] = 0.0
+
+    return metrics
+
+
+def print_report(
+    portfolio: Portfolio,
+    trade_log: TradeLog | None = None,
+    benchmark_curve: list[tuple[datetime, float]] | None = None,
+) -> None:
     """打印回测报告。"""
-    metrics = calculate_metrics(portfolio)
+    metrics = calculate_metrics(portfolio, benchmark_curve)
     if not metrics:
         print("No data to report.")
         return
 
-    print("\n" + "=" * 50)
-    print("           BACKTEST REPORT")
-    print("=" * 50)
+    print("\n" + "=" * 55)
+    print("              BACKTEST REPORT")
+    print("=" * 55)
     print(f"  Initial Equity:   ${metrics['initial_equity']:>12,.2f}")
     print(f"  Final Equity:     ${metrics['final_equity']:>12,.2f}")
     print(f"  Total Return:     {metrics['total_return']:>12.2%}")
     print(f"  CAGR:             {metrics['cagr']:>12.2%}")
+    print(f"  Volatility:       {metrics['volatility']:>12.2%}")
     print(f"  Max Drawdown:     {metrics['max_drawdown']:>12.2%}")
+    print("-" * 55)
     print(f"  Sharpe Ratio:     {metrics['sharpe_ratio']:>12.2f}")
+    print(f"  Sortino Ratio:    {metrics['sortino_ratio']:>12.2f}")
+    print(f"  Calmar Ratio:     {metrics['calmar_ratio']:>12.2f}")
     print(f"  Win Rate (daily): {metrics['win_rate']:>12.2%}")
     print(f"  Realized PnL:     ${metrics['realized_pnl']:>12,.2f}")
-    print("=" * 50)
+
+    # Benchmark
+    if "benchmark_return" in metrics:
+        print("-" * 55)
+        print(f"  Benchmark Return: {metrics['benchmark_return']:>12.2%}")
+        print(f"  Alpha:            {metrics['alpha']:>12.2%}")
+        print(f"  Beta:             {metrics['beta']:>12.2f}")
+        print(f"  Information Ratio:{metrics['information_ratio']:>12.2f}")
+
+    # Trade log
+    if trade_log:
+        ts = trade_log.summary()
+        if ts.get("total_trades", 0) > 0:
+            print("-" * 55)
+            print(f"  Total Trades:     {ts['total_trades']:>12d}")
+            print(f"  Win / Loss:       {ts['winning_trades']:>5d} / {ts['losing_trades']:<5d}")
+            print(f"  Trade Win Rate:   {ts['win_rate']:>12.2%}")
+            print(f"  Avg Win:          ${ts['avg_win']:>12,.2f}")
+            print(f"  Avg Loss:         ${ts['avg_loss']:>12,.2f}")
+            print(f"  Profit Factor:    {ts['profit_factor']:>12.2f}")
+            print(f"  Largest Win:      ${ts['largest_win']:>12,.2f}")
+            print(f"  Largest Loss:     ${ts['largest_loss']:>12,.2f}")
+            print(f"  Avg Holding Days: {ts['avg_holding_days']:>12.1f}")
+
+    print("=" * 55)
