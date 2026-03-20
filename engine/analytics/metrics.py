@@ -290,17 +290,87 @@ def calculate_metrics(
     return metrics
 
 
+def get_environment_info(engine=None) -> dict:
+    """
+    收集回测环境信息: Python 版本、依赖版本、引擎配置。
+
+    Args:
+        engine: 可选的 BacktestEngine 实例，用于提取配置参数
+
+    Returns:
+        包含环境信息的字典
+    """
+    import platform
+    import sys
+
+    info: dict = {
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+    }
+
+    # 核心依赖版本
+    for pkg in ("numpy", "scipy", "yfinance", "matplotlib"):
+        try:
+            mod = __import__(pkg)
+            info[f"{pkg}_version"] = getattr(mod, "__version__", "unknown")
+        except ImportError:
+            info[f"{pkg}_version"] = "not installed"
+
+    # 引擎配置
+    if engine is not None:
+        info["symbols"] = engine.symbols
+        info["period"] = f"{engine.start} ~ {engine.end}"
+        info["initial_cash"] = engine.portfolio.initial_cash
+        info["slippage_rate"] = engine.broker.slippage_rate
+        info["fee_model"] = type(engine.broker.fee_model).__name__
+        info["strategy"] = type(engine.strategy).__name__
+        info["data_feed"] = type(engine.data_feed).__name__
+
+    return info
+
+
+def print_environment(engine=None) -> None:
+    """打印环境信息到控制台。"""
+    info = get_environment_info(engine)
+
+    print("\n" + "=" * 55)
+    print("            ENVIRONMENT INFO")
+    print("=" * 55)
+    print(f"  Python:           {info['python_version']}")
+    print(f"  Platform:         {info['platform']}")
+    print(f"  NumPy:            {info['numpy_version']}")
+    print(f"  SciPy:            {info['scipy_version']}")
+    print(f"  yfinance:         {info['yfinance_version']}")
+    print(f"  matplotlib:       {info['matplotlib_version']}")
+
+    if engine is not None:
+        print("-" * 55)
+        print(f"  Strategy:         {info['strategy']}")
+        print(f"  Data Feed:        {info['data_feed']}")
+        print(f"  Symbols:          {', '.join(info['symbols'])}")
+        print(f"  Period:           {info['period']}")
+        print(f"  Initial Cash:     ${info['initial_cash']:>12,.2f}")
+        print(f"  Fee Model:        {info['fee_model']}")
+        print(f"  Slippage Rate:    {info['slippage_rate']:.4%}")
+
+    print("=" * 55)
+
+
 def print_report(
     portfolio: Portfolio,
     trade_log: TradeLog | None = None,
     benchmark_curve: list[tuple[datetime, float]] | None = None,
     engine=None,
+    show_environment: bool = False,
 ) -> None:
     """
     打印回测报告。
 
     如果传入 engine，自动使用 engine.benchmark_curve (SPY)。
     也可以手动传 benchmark_curve 覆盖。
+
+    Args:
+        show_environment: 是否在报告末尾打印环境信息
     """
     if benchmark_curve is None and engine is not None:
         benchmark_curve = getattr(engine, "benchmark_curve", None)
@@ -355,3 +425,6 @@ def print_report(
             print(f"  Avg Holding Days: {ts['avg_holding_days']:>12.1f}")
 
     print("=" * 55)
+
+    if show_environment:
+        print_environment(engine)
