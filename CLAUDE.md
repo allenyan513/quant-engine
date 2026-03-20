@@ -267,9 +267,9 @@ numpy, scipy, yfinance, matplotlib, anthropic (仅 QC 导出需要)
 
 ### 中期
 
-- [ ] **Walk-Forward 参数优化** — 网格搜索 + 走步验证 + 参数稳定性热力图，避免过拟合
+- [x] **Walk-Forward 参数优化** — WalkForwardOptimizer: 网格搜索 + 走步验证 + 参数稳定性热力图 + OOS 拼接净值 + 窗口对比图。10 个测试覆盖
 - [ ] **IBKR 实盘对接** — IBKR API 实时数据+下单，策略信号→实际订单桥接
-- [ ] **保证金模型** — 做空保证金占用、Reg T / Portfolio Margin、margin call 模拟
+- [x] **保证金模型** — RegTMargin (Reg T 50%/25%) + PortfolioMargin (15%/10%) + CashAccount (禁止做空) + margin call 自动强制平仓。engine.margin_model 参数
 - [ ] **多资产类别** — 期权 (covered call/protective put) + 期货 (到期换月)
 - [ ] **动态 Universe Selection** — UniverseSelectionModel 接口，支持基本面/技术面选股，engine 支持动态增减 symbols。前提: 需要付费数据源 (Polygon/Alpaca) 支持几千只股票。目前 ETF 轮动手动指定 symbols 够用
 
