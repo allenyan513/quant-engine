@@ -9,7 +9,7 @@
       "Bash(git commit:*)",
       "Bash(gh repo:*)",
       "Bash(git push:*)",
-      "Bash(python -m pytest tests/ -v)",
+      "Bash(python -m pytest:*)",
       "mcp__Desktop_Commander__list_directory",
       "Bash(wc -l /Users/alin/Github/quant-engine/engine/core/*.py /Users/alin/Github/quant-engine/engine/execution/*.py /Users/alin/Github/quant-engine/engine/portfolio/*.py /Users/alin/Github/quant-engine/engine/strategy/*.py /Users/alin/Github/quant-engine/engine/data/*.py /Users/alin/Github/quant-engine/engine/analytics/*.py)",
       "Bash(python -m examples.run_risk_managed)",
