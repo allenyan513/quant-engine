@@ -259,10 +259,10 @@ numpy, scipy, yfinance, matplotlib, anthropic (仅 QC 导出需要)
 
 ### 近期 (复杂度低)
 
-- [ ] **组合级风控 (RiskManager)** — 可插拔的 RiskManager 插到 engine 下单环节，支持: 全局最大回撤熔断 + 单标的最大仓位限制 + 下单前拦截/调整。目前只有策略级 StopManager/PositionSizer，缺组合级风控
-- [ ] **执行模型抽象 (ExecutionModel)** — 给 BacktestEngine 加可选的 execution_model 参数，默认立即执行，可扩展 TWAP/VWAP。优先级低，等分钟线/实盘时再做
-- [ ] **滑点/手续费模型增强** — 按成交额阶梯费率(IB实际费率) + 成交量冲击模型，目前是固定比例
-- [ ] **报告增强** — 月度收益热力图 + 滚动 Sharpe/Beta 曲线 + 按标的 PnL 归因
+- [x] **组合级风控 (RiskManager)** — MaxDrawdownBreaker (全局回撤熔断+可选清仓) + MaxPositionLimit (单标的仓位限制+自动缩量) + CompositeRiskManager 串联。engine.risk_manager 参数
+- [x] **执行模型抽象 (ExecutionModel)** — ImmediateExecution (默认) / TWAPExecution / VWAPExecution。engine.execution_model 参数
+- [x] **滑点/手续费模型增强** — TieredFeeModel (IB 阶梯费率) + SlippageModel 接口 (FixedRateSlippage / VolumeImpactSlippage / ZeroSlippage)
+- [x] **报告增强** — monthly_returns.png (热力图) + rolling_sharpe_beta.png + pnl_attribution.png，generate_report() 自动生成
 - [ ] **分钟/小时线支持** — 接入 Polygon.io 或 Alpaca 数据源，支持日内策略回测
 
 ### 中期
