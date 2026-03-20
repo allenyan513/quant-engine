@@ -17,12 +17,13 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine.engine import BacktestEngine
-from engine.data.data_feed import YFinanceFeed
+from engine.data import YFinanceFeed, CachedFeed
 from engine.analytics.metrics import print_report
 from engine.analytics.chart import plot_backtest
 from engine.indicators import donchian, atr
 from engine.risk.position_sizer import ATRSizer
 from engine.strategy.base import BaseStrategy
+from strategies.buy_and_hold import BuyAndHold
 
 
 class RiskManagedBreakout(BaseStrategy):
@@ -123,6 +124,9 @@ class RiskManagedBreakout(BaseStrategy):
 
 def main():
     symbol = "AAPL"
+    start = "2022-01-01"
+    end = "2024-12-31"
+    feed = CachedFeed(YFinanceFeed())
 
     strategy = RiskManagedBreakout(
         symbol=symbol,
@@ -134,10 +138,10 @@ def main():
 
     engine = BacktestEngine(
         strategy=strategy,
-        data_feed=YFinanceFeed(),
+        data_feed=feed,
         symbols=[symbol],
-        start="2022-01-01",
-        end="2024-12-31",
+        start=start,
+        end=end,
         initial_cash=100_000.0,
         commission_rate=0.001,
         slippage_rate=0.0005,
@@ -145,10 +149,25 @@ def main():
 
     portfolio = engine.run()
 
+    # ── 基准: SPY 买入持有 ────────────────────────────────────
+    bench_strategy = BuyAndHold(symbol="SPY", size=500)
+    bench_engine = BacktestEngine(
+        strategy=bench_strategy,
+        data_feed=feed,
+        symbols=["SPY"],
+        start=start,
+        end=end,
+        initial_cash=100_000.0,
+        commission_rate=0.001,
+        slippage_rate=0.0005,
+    )
+    bench_portfolio = bench_engine.run()
+
     # ── 打印增强报告（含 Sortino / Calmar / 交易统计） ──
     print_report(
         portfolio=portfolio,
         trade_log=engine.trade_log,
+        benchmark_curve=bench_portfolio.equity_curve,
     )
 
     # ── 打印交易明细 ──
@@ -175,12 +194,15 @@ def main():
     if not has_pos:
         print("    (none)")
 
-    # ── 可视化 ──
+    # ── 可视化 (带基准对比) ──
     plot_backtest(
         portfolio=portfolio,
         bar_data=engine.bar_data,
-        title=f"Risk-Managed Breakout ({symbol}) — 2022-2024",
+        benchmark=bench_portfolio,
+        benchmark_label="SPY Buy & Hold",
+        title=f"Risk-Managed Breakout ({symbol}) vs SPY — 2022-2024",
         save_path="backtest_risk_managed.png",
+        show=False,
     )
 
 

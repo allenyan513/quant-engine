@@ -131,10 +131,12 @@ def main():
     for name, v1, v2 in comparisons:
         print(f"  {name:<23} {v1:>15} {v2:>15}")
 
-    # ── 可视化 ────────────────────────────────────────────────
+    # ── 可视化 (带基准对比) ──────────────────────────────────
     plot_backtest(
         portfolio=portfolio,
         bar_data=engine.bar_data,
+        benchmark=bench_portfolio,
+        benchmark_label="SPY Buy & Hold",
         title="ETF Momentum Rotation + Regime Filter (2015-2024)",
         save_path="backtest_etf_momentum.png",
         show=False,

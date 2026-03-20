@@ -1,5 +1,5 @@
 """
-示例: 运行 SMA 交叉策略回测。
+示例: 运行 SMA 交叉策略回测 (带 SPY 基准对比)。
 
 用法: python -m examples.run_sma
 """
@@ -11,15 +11,21 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine.engine import BacktestEngine
-from engine.data.data_feed import YFinanceFeed
+from engine.data import YFinanceFeed, CachedFeed
 from engine.analytics.metrics import print_report
 from engine.analytics.chart import plot_backtest
 from strategies.sma_crossover import SMACrossover
+from strategies.buy_and_hold import BuyAndHold
 
 
 def main():
-    # 策略参数
+    feed = CachedFeed(YFinanceFeed())
+
+    # ── 策略 ──────────────────────────────────────────────────
     symbol = "AAPL"
+    start = "2023-01-01"
+    end = "2024-12-31"
+
     strategy = SMACrossover(
         symbol=symbol,
         fast_period=10,
@@ -27,36 +33,49 @@ def main():
         size=100,
     )
 
-    # 创建引擎
     engine = BacktestEngine(
         strategy=strategy,
-        data_feed=YFinanceFeed(),
+        data_feed=feed,
         symbols=[symbol],
-        start="2023-01-01",
-        end="2024-12-31",
+        start=start,
+        end=end,
         initial_cash=100_000.0,
         commission_rate=0.001,
         slippage_rate=0.0005,
     )
-
-    # 运行
     portfolio = engine.run()
 
-    # 打印报告
-    print_report(portfolio)
+    # ── 基准: SPY 买入持有 ────────────────────────────────────
+    bench_strategy = BuyAndHold(symbol="SPY", size=500)
+    bench_engine = BacktestEngine(
+        strategy=bench_strategy,
+        data_feed=feed,
+        symbols=["SPY"],
+        start=start,
+        end=end,
+        initial_cash=100_000.0,
+        commission_rate=0.001,
+        slippage_rate=0.0005,
+    )
+    bench_portfolio = bench_engine.run()
 
-    # 打印持仓
+    # ── 报告 ──────────────────────────────────────────────────
+    print_report(portfolio, benchmark_curve=bench_portfolio.equity_curve)
+
     print("\nOpen Positions:")
     for sym, pos in portfolio.positions.items():
         if pos.quantity != 0:
             print(f"  {sym}: {pos.quantity} shares @ ${pos.avg_cost:.2f}")
 
-    # 可视化
+    # ── 可视化 (带基准) ──────────────────────────────────────
     plot_backtest(
         portfolio=portfolio,
         bar_data=engine.bar_data,
-        title=f"SMA Crossover ({symbol}) — 2023-2024",
+        benchmark=bench_portfolio,
+        benchmark_label="SPY Buy & Hold",
+        title=f"SMA Crossover ({symbol}) vs SPY — 2023-2024",
         save_path="backtest_result.png",
+        show=False,
     )
 
 
