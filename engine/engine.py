@@ -17,6 +17,7 @@ from engine.data.data_feed import DataFeed
 from engine.execution.broker import SimulatedBroker
 from engine.execution.execution_model import ExecutionModel, ImmediateExecution
 from engine.execution.fee_model import FeeModel
+from engine.execution.margin_model import MarginModel
 from engine.portfolio.portfolio import Portfolio
 from engine.risk.risk_manager import RiskManager
 from engine.strategy.base import BaseStrategy
@@ -42,6 +43,7 @@ class BacktestEngine:
         commission_rate: float | None = None,
         risk_manager: RiskManager | None = None,
         execution_model: ExecutionModel | None = None,
+        margin_model: MarginModel | None = None,
     ) -> None:
         self.strategy = strategy
         self.data_feed = data_feed
@@ -50,6 +52,7 @@ class BacktestEngine:
         self.end = end
         self.risk_manager = risk_manager
         self.execution_model = execution_model or ImmediateExecution()
+        self.margin_model = margin_model
 
         self.bar_data = BarData()
         self.portfolio = Portfolio(initial_cash=initial_cash)
@@ -151,6 +154,15 @@ class BacktestEngine:
                 self.turnover_curve.append((timestamp, delta / (2 * equity)))
                 self._prev_holdings = curr_holdings
 
+            # 3c-3. Margin call 检查
+            if self.margin_model is not None:
+                margin_status = self.margin_model.check_margin_status(
+                    self.portfolio, self.bar_data,
+                )
+                if margin_status.margin_call:
+                    # 强制平仓: 按持仓市值从大到小平仓，直到满足保证金要求
+                    self._handle_margin_call()
+
             # 3d-0. 风控 on_bar (回撤熔断清仓等)
             if self.risk_manager is not None:
                 risk_orders = self.risk_manager.on_bar(
@@ -179,7 +191,7 @@ class BacktestEngine:
         return self.portfolio
 
     def _submit_with_risk_check(self, order) -> None:
-        """提交订单: RiskManager 过滤 → ExecutionModel 拆分 → Broker 提交。"""
+        """提交订单: RiskManager → MarginModel → ExecutionModel → Broker。"""
         # 1. 风控检查
         if self.risk_manager is not None:
             result = self.risk_manager.check_order(
@@ -190,12 +202,56 @@ class BacktestEngine:
             if result.adjusted_order is not None:
                 order = result.adjusted_order
 
-        # 2. 执行模型拆分
+        # 2. 保证金检查
+        if self.margin_model is not None:
+            approved, reason = self.margin_model.check_order(
+                order, self.portfolio, self.bar_data,
+            )
+            if not approved:
+                return
+
+        # 3. 执行模型拆分
         sub_orders = self.execution_model.execute(
             order, self.portfolio, self.bar_data,
         )
         for sub in sub_orders:
             self.broker.submit_order(sub)
+
+    def _handle_margin_call(self) -> None:
+        """
+        处理 margin call: 按持仓市值从大到小强制平仓，
+        直到满足维持保证金要求。
+        """
+        from engine.core.event import Direction, OrderEvent
+
+        # 收集所有持仓及其市值
+        positions_mv: list[tuple[str, int, float]] = []
+        for sym, pos in self.portfolio.positions.items():
+            if pos.quantity == 0:
+                continue
+            bar = self.bar_data.current(sym)
+            if bar:
+                mv = abs(pos.quantity * bar.close)
+                positions_mv.append((sym, pos.quantity, mv))
+
+        # 按市值从大到小排序
+        positions_mv.sort(key=lambda x: x[2], reverse=True)
+
+        for sym, qty, mv in positions_mv:
+            # 生成平仓订单
+            if qty > 0:
+                order = OrderEvent(
+                    symbol=sym, direction=Direction.SHORT, quantity=qty,
+                )
+            else:
+                order = OrderEvent(
+                    symbol=sym, direction=Direction.LONG, quantity=abs(qty),
+                )
+            self.broker.submit_order(order)
+
+            # 检查是否已满足保证金 (简化: 平掉最大持仓后重新检查)
+            # 注: 实际平仓要到下一 bar，这里只是提交订单
+            break  # 每 bar 只强制平一个最大持仓，避免过度平仓
 
     def _fetch_spy_benchmark(self) -> list[tuple[datetime, float]] | None:
         """自动获取 SPY 数据，构建基准净值曲线（与 QC 一致）。"""
