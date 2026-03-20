@@ -13,6 +13,7 @@ from __future__ import annotations
 from engine.core.bar_data import BarData
 from engine.core.event import Direction, FillEvent, OrderEvent, OrderType
 from engine.execution.fee_model import FeeModel, PerShareFeeModel
+from engine.execution.slippage_model import FixedRateSlippage, SlippageModel
 
 
 class SimulatedBroker:
@@ -24,6 +25,7 @@ class SimulatedBroker:
         slippage_rate: float = 0.0005,   # 0.05% 滑点
         # 向后兼容: 如果传了 commission_rate，自动创建 PercentageFeeModel
         commission_rate: float | None = None,
+        slippage_model: SlippageModel | None = None,
     ) -> None:
         if commission_rate is not None:
             from engine.execution.fee_model import PercentageFeeModel
@@ -33,6 +35,7 @@ class SimulatedBroker:
         else:
             self.fee_model = PerShareFeeModel()
         self.slippage_rate = slippage_rate
+        self.slippage_model = slippage_model
         self._pending_orders: list[OrderEvent] = []
 
     def submit_order(self, order: OrderEvent) -> None:
@@ -98,7 +101,7 @@ class SimulatedBroker:
     def _fill_market(self, order: OrderEvent, bar) -> FillEvent:
         """市价单: 以 open + 滑点成交。"""
         base_price = bar.open
-        fill_price = self._apply_slippage(base_price, order.direction)
+        fill_price = self._apply_slippage(base_price, order.direction, bar, order.quantity)
         return self._make_fill(order, fill_price, bar.timestamp)
 
     def _fill_limit(self, order: OrderEvent, bar) -> FillEvent | None:
@@ -138,12 +141,12 @@ class SimulatedBroker:
             if bar.high >= order.stop_price:
                 # 如果 open 就已经高于 stop，gap up 场景，以 open 成交
                 base_price = max(order.stop_price, bar.open)
-                fill_price = self._apply_slippage(base_price, order.direction)
+                fill_price = self._apply_slippage(base_price, order.direction, bar, order.quantity)
                 return self._make_fill(order, fill_price, bar.timestamp)
         else:
             if bar.low <= order.stop_price:
                 base_price = min(order.stop_price, bar.open)
-                fill_price = self._apply_slippage(base_price, order.direction)
+                fill_price = self._apply_slippage(base_price, order.direction, bar, order.quantity)
                 return self._make_fill(order, fill_price, bar.timestamp)
         return None
 
@@ -183,8 +186,10 @@ class SimulatedBroker:
         # 实际上这里返回 None 就行，order 留在 pending 继续尝试
         return None
 
-    def _apply_slippage(self, price: float, direction: Direction) -> float:
-        """应用滑点。"""
+    def _apply_slippage(self, price: float, direction: Direction, bar=None, quantity: int = 0) -> float:
+        """应用滑点。优先使用 slippage_model，回退到固定比例。"""
+        if self.slippage_model is not None and bar is not None:
+            return self.slippage_model.calculate(price, direction, bar, quantity)
         if direction == Direction.LONG:
             return price * (1 + self.slippage_rate)
         else:

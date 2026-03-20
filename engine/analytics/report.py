@@ -22,7 +22,12 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.ticker import FuncFormatter
 
-from engine.analytics.metrics import TradeLog, calculate_metrics
+from engine.analytics.enhanced_charts import (
+    plot_monthly_returns_heatmap,
+    plot_pnl_attribution,
+    plot_rolling_sharpe_beta,
+)
+from engine.analytics.metrics import TradeLog, calculate_metrics, get_environment_info
 from engine.portfolio.portfolio import Portfolio
 
 
@@ -82,19 +87,27 @@ def generate_report(
         portfolio, engine, bench_curve, benchmark_label, strategy_name, metrics,
     )
 
-    # 3. CSV 数据导出
+    # 3. Enhanced charts
+    plot_monthly_returns_heatmap(portfolio, output_dir / "monthly_returns.png")
+    plot_rolling_sharpe_beta(portfolio, bench_curve, output_dir / "rolling_sharpe_beta.png")
+    plot_pnl_attribution(trade_log, output_dir / "pnl_attribution.png")
+
+    # 4. CSV 数据导出
     _write_equity_csv(output_dir / "equity_curve.csv", portfolio)
     _write_trades_csv(output_dir / "trades.csv", trade_log)
     _write_exposure_csv(output_dir / "exposure.csv", engine)
     _write_turnover_csv(output_dir / "turnover.csv", engine)
 
     print(f"\nReport saved to {output_dir}/")
-    print(f"  report.png        — 综合图表")
-    print(f"  report.txt        — 文本报告")
-    print(f"  equity_curve.csv  — 净值曲线")
-    print(f"  trades.csv        — 交易明细")
-    print(f"  exposure.csv      — 多空敞口")
-    print(f"  turnover.csv      — 换手率")
+    print(f"  report.png              — 综合图表")
+    print(f"  monthly_returns.png     — 月度收益热力图")
+    print(f"  rolling_sharpe_beta.png — 滚动 Sharpe/Beta")
+    print(f"  pnl_attribution.png     — 按标的 PnL 归因")
+    print(f"  report.txt              — 文本报告")
+    print(f"  equity_curve.csv        — 净值曲线")
+    print(f"  trades.csv              — 交易明细")
+    print(f"  exposure.csv            — 多空敞口")
+    print(f"  turnover.csv            — 换手率")
 
     return output_dir
 
@@ -194,6 +207,22 @@ def _write_text_report(
             mv = pos.quantity * bar.close if bar else 0
             pct = mv / portfolio.equity * 100 if portfolio.equity > 0 else 0
             w(f"  {sym:<10} {pos.quantity:>8} shares  ${mv:>12,.0f}  ({pct:>5.1f}%)")
+
+    # Environment info
+    env = get_environment_info(engine)
+    w("")
+    w("─── Environment ───────────────────────────────────────")
+    w(f"  Python:             {env['python_version']}")
+    w(f"  Platform:           {env['platform']}")
+    w(f"  NumPy:              {env['numpy_version']}")
+    w(f"  SciPy:              {env['scipy_version']}")
+    w(f"  yfinance:           {env['yfinance_version']}")
+    w(f"  matplotlib:         {env['matplotlib_version']}")
+    if "strategy" in env:
+        w(f"  Strategy:           {env['strategy']}")
+        w(f"  Data Feed:          {env['data_feed']}")
+        w(f"  Fee Model:          {env['fee_model']}")
+        w(f"  Slippage Rate:      {env['slippage_rate']:.4%}")
 
     w("")
     w("=" * 60)

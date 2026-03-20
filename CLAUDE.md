@@ -259,17 +259,17 @@ numpy, scipy, yfinance, matplotlib, anthropic (仅 QC 导出需要)
 
 ### 近期 (复杂度低)
 
-- [ ] **组合级风控 (RiskManager)** — 可插拔的 RiskManager 插到 engine 下单环节，支持: 全局最大回撤熔断 + 单标的最大仓位限制 + 下单前拦截/调整。目前只有策略级 StopManager/PositionSizer，缺组合级风控
-- [ ] **执行模型抽象 (ExecutionModel)** — 给 BacktestEngine 加可选的 execution_model 参数，默认立即执行，可扩展 TWAP/VWAP。优先级低，等分钟线/实盘时再做
-- [ ] **滑点/手续费模型增强** — 按成交额阶梯费率(IB实际费率) + 成交量冲击模型，目前是固定比例
-- [ ] **报告增强** — 月度收益热力图 + 滚动 Sharpe/Beta 曲线 + 按标的 PnL 归因
+- [x] **组合级风控 (RiskManager)** — MaxDrawdownBreaker (全局回撤熔断+可选清仓) + MaxPositionLimit (单标的仓位限制+自动缩量) + CompositeRiskManager 串联。engine.risk_manager 参数
+- [x] **执行模型抽象 (ExecutionModel)** — ImmediateExecution (默认) / TWAPExecution / VWAPExecution。engine.execution_model 参数
+- [x] **滑点/手续费模型增强** — TieredFeeModel (IB 阶梯费率) + SlippageModel 接口 (FixedRateSlippage / VolumeImpactSlippage / ZeroSlippage)
+- [x] **报告增强** — monthly_returns.png (热力图) + rolling_sharpe_beta.png + pnl_attribution.png，generate_report() 自动生成
 - [ ] **分钟/小时线支持** — 接入 Polygon.io 或 Alpaca 数据源，支持日内策略回测
 
 ### 中期
 
-- [ ] **Walk-Forward 参数优化** — 网格搜索 + 走步验证 + 参数稳定性热力图，避免过拟合
+- [x] **Walk-Forward 参数优化** — WalkForwardOptimizer: 网格搜索 + 走步验证 + 参数稳定性热力图 + OOS 拼接净值 + 窗口对比图。10 个测试覆盖
 - [ ] **IBKR 实盘对接** — IBKR API 实时数据+下单，策略信号→实际订单桥接
-- [ ] **保证金模型** — 做空保证金占用、Reg T / Portfolio Margin、margin call 模拟
+- [x] **保证金模型** — RegTMargin (Reg T 50%/25%) + PortfolioMargin (15%/10%) + CashAccount (禁止做空) + margin call 自动强制平仓。engine.margin_model 参数
 - [ ] **多资产类别** — 期权 (covered call/protective put) + 期货 (到期换月)
 - [ ] **动态 Universe Selection** — UniverseSelectionModel 接口，支持基本面/技术面选股，engine 支持动态增减 symbols。前提: 需要付费数据源 (Polygon/Alpaca) 支持几千只股票。目前 ETF 轮动手动指定 symbols 够用
 
