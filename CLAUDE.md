@@ -24,10 +24,11 @@ engine/                         # 核心引擎框架
 │   ├── data_feed.py           # DataFeed 基类 + YFinanceFeed (Yahoo日线) + CSVFeed
 │   └── cached_feed.py         # CachedFeed — 装饰器模式，本地 CSV 缓存，智能增量更新
 ├── execution/
-│   └── broker.py              # SimulatedBroker — 模拟撮合 (滑点 + 手续费)
-│                              #   MARKET: 下根bar open+滑点
-│                              #   LIMIT: bar.low≤limit→min(limit,open)成交
-│                              #   STOP: 穿越stop_price后+滑点成交
+│   ├── broker.py              # SimulatedBroker — 模拟撮合 (滑点 + 可插拔手续费)
+│   │                          #   MARKET: 下根bar open+滑点
+│   │                          #   LIMIT: bar.low≤limit→min(limit,open)成交
+│   │                          #   STOP: 穿越stop_price后+滑点成交
+│   └── fee_model.py           # FeeModel 基类 + PerShareFeeModel (IB) / PercentageFeeModel / ZeroFeeModel
 ├── portfolio/
 │   └── portfolio.py           # Position (持仓+均价) + Portfolio (现金+持仓+净值曲线)
 ├── strategy/
@@ -111,6 +112,7 @@ class MyStrategy(BaseStrategy):
 ```python
 from engine.engine import BacktestEngine
 from engine.data import CachedFeed, YFinanceFeed
+from engine.execution.fee_model import PerShareFeeModel
 from engine.analytics.metrics import print_report
 
 engine = BacktestEngine(
@@ -120,8 +122,8 @@ engine = BacktestEngine(
     start="2023-01-01",
     end="2025-12-31",
     initial_cash=100_000.0,
-    commission_rate=0.001,   # 0.1%
-    slippage_rate=0.0005,    # 0.05%
+    fee_model=PerShareFeeModel(),  # IB: $0.005/股, 最低$1, 最高0.5%
+    slippage_rate=0.0005,          # 0.05%
 )
 portfolio = engine.run()  # 自动获取 SPY 基准
 print_report(portfolio, trade_log=engine.trade_log, engine=engine)  # 自动 vs SPY
@@ -177,6 +179,25 @@ report = reconciler.compare_from_log(
     engine_trade_log=engine.trade_log,
 )
 report.print_report()  # 按严重程度分级的差异报告 + 根因诊断
+```
+
+## 手续费模型
+
+可插拔的手续费模型，参考 QuantConnect 的 FeeModel 设计:
+
+```python
+from engine.execution.fee_model import PerShareFeeModel, PercentageFeeModel, ZeroFeeModel
+
+# IB Fixed 模式 (默认): $0.005/股, 最低 $1, 最高 0.5% 交易额
+PerShareFeeModel(per_share=0.005, min_fee=1.0, max_pct=0.005)
+
+# 按比例收费 (向后兼容旧 commission_rate)
+PercentageFeeModel(rate=0.001)   # 0.1%
+
+# 零手续费
+ZeroFeeModel()
+
+# 自定义: 继承 FeeModel，实现 calculate(fill_price, quantity) → float
 ```
 
 ## 指标函数
@@ -238,10 +259,11 @@ numpy, scipy, yfinance, matplotlib, anthropic (仅 QC 导出需要)
 
 ### 近期 (复杂度低)
 
-- [ ] **组合级风控** — 全局最大回撤熔断 + 单标的最大仓位限制，目前只有单标的止损
+- [ ] **组合级风控 (RiskManager)** — 可插拔的 RiskManager 插到 engine 下单环节，支持: 全局最大回撤熔断 + 单标的最大仓位限制 + 下单前拦截/调整。目前只有策略级 StopManager/PositionSizer，缺组合级风控
+- [ ] **执行模型抽象 (ExecutionModel)** — 给 BacktestEngine 加可选的 execution_model 参数，默认立即执行，可扩展 TWAP/VWAP。优先级低，等分钟线/实盘时再做
 - [ ] **滑点/手续费模型增强** — 按成交额阶梯费率(IB实际费率) + 成交量冲击模型，目前是固定比例
 - [ ] **报告增强** — 月度收益热力图 + 滚动 Sharpe/Beta 曲线 + 按标的 PnL 归因
-- [ ] **多时间框架** — 支持周线/月线/小时线，策略可跨周期参考
+- [ ] **分钟/小时线支持** — 接入 Polygon.io 或 Alpaca 数据源，支持日内策略回测
 
 ### 中期
 
@@ -249,9 +271,11 @@ numpy, scipy, yfinance, matplotlib, anthropic (仅 QC 导出需要)
 - [ ] **IBKR 实盘对接** — IBKR API 实时数据+下单，策略信号→实际订单桥接
 - [ ] **保证金模型** — 做空保证金占用、Reg T / Portfolio Margin、margin call 模拟
 - [ ] **多资产类别** — 期权 (covered call/protective put) + 期货 (到期换月)
+- [ ] **动态 Universe Selection** — UniverseSelectionModel 接口，支持基本面/技术面选股，engine 支持动态增减 symbols。前提: 需要付费数据源 (Polygon/Alpaca) 支持几千只股票。目前 ETF 轮动手动指定 symbols 够用
 
 ### 远期
 
+- [ ] **QC Algorithm Framework 全模块化** — Alpha/PortfolioConstruction/RiskManagement/Execution 完整拆分。评估结论: 改动太大 (11策略重写+194测试失效)，当前 on_bar() 模式更灵活，暂不做。如果未来策略数量和复杂度大幅增长再考虑
 - [ ] **事件日历** — 财报日/FOMC/期权到期日，策略可在事件前后调整行为
 - [ ] **因子研究框架** — 截面因子计算 + IC/IR 分析 + 因子衰减曲线
 - [ ] **分布式回测** — 大规模参数扫描并行化 + 多策略组合回测

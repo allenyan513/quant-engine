@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine.engine import BacktestEngine
 from engine.data import YFinanceFeed, CachedFeed
+from engine.execution.fee_model import PerShareFeeModel
 from engine.analytics.report import generate_report
 from strategies.sma_crossover import SMACrossover
 from strategies.dual_momentum import DualMomentum
@@ -29,7 +30,7 @@ def run_and_report(name, strategy, symbols, start, end, feed):
         start=start,
         end=end,
         initial_cash=100_000.0,
-        commission_rate=0.001,
+        fee_model=PerShareFeeModel(),
         slippage_rate=0.0005,
     )
     engine.run()

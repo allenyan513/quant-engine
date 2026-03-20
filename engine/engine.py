@@ -15,6 +15,7 @@ from engine.analytics.metrics import TradeLog
 from engine.core.bar_data import Bar, BarData
 from engine.data.data_feed import DataFeed
 from engine.execution.broker import SimulatedBroker
+from engine.execution.fee_model import FeeModel
 from engine.portfolio.portfolio import Portfolio
 from engine.strategy.base import BaseStrategy
 
@@ -33,8 +34,10 @@ class BacktestEngine:
         start: str,
         end: str,
         initial_cash: float = 100_000.0,
-        commission_rate: float = 0.001,
+        fee_model: FeeModel | None = None,
         slippage_rate: float = 0.0005,
+        # 向后兼容
+        commission_rate: float | None = None,
     ) -> None:
         self.strategy = strategy
         self.data_feed = data_feed
@@ -46,8 +49,9 @@ class BacktestEngine:
         self.portfolio = Portfolio(initial_cash=initial_cash)
         self.trade_log = TradeLog()
         self.broker = SimulatedBroker(
-            commission_rate=commission_rate,
+            fee_model=fee_model,
             slippage_rate=slippage_rate,
+            commission_rate=commission_rate,
         )
 
         # Exposure & Turnover time series

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from engine.core.bar_data import BarData
 from engine.core.event import Direction, FillEvent, OrderEvent, OrderType
+from engine.execution.fee_model import FeeModel, PerShareFeeModel
 
 
 class SimulatedBroker:
@@ -19,10 +20,18 @@ class SimulatedBroker:
 
     def __init__(
         self,
-        commission_rate: float = 0.001,  # 0.1% 手续费
+        fee_model: FeeModel | None = None,
         slippage_rate: float = 0.0005,   # 0.05% 滑点
+        # 向后兼容: 如果传了 commission_rate，自动创建 PercentageFeeModel
+        commission_rate: float | None = None,
     ) -> None:
-        self.commission_rate = commission_rate
+        if commission_rate is not None:
+            from engine.execution.fee_model import PercentageFeeModel
+            self.fee_model = PercentageFeeModel(rate=commission_rate)
+        elif fee_model is not None:
+            self.fee_model = fee_model
+        else:
+            self.fee_model = PerShareFeeModel()
         self.slippage_rate = slippage_rate
         self._pending_orders: list[OrderEvent] = []
 
@@ -183,7 +192,7 @@ class SimulatedBroker:
 
     def _make_fill(self, order: OrderEvent, fill_price: float, timestamp) -> FillEvent:
         """构造 FillEvent。"""
-        commission = fill_price * order.quantity * self.commission_rate
+        commission = self.fee_model.calculate(fill_price, order.quantity)
         return FillEvent(
             symbol=order.symbol,
             direction=order.direction,

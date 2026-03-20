@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine.engine import BacktestEngine
 from engine.data import YFinanceFeed, CachedFeed
+from engine.execution.fee_model import PerShareFeeModel
 from engine.analytics.metrics import print_report, calculate_metrics
 from engine.analytics.chart import plot_backtest
 from engine.analytics.report import generate_report
@@ -36,7 +37,7 @@ def run_backtest(feed, strategy_cls, strategy_kwargs, symbols, start, end, initi
         start=start,
         end=end,
         initial_cash=initial_cash,
-        commission_rate=0.001,
+        fee_model=PerShareFeeModel(),
         slippage_rate=0.0005,
     )
     portfolio = engine.run()

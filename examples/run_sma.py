@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine.engine import BacktestEngine
 from engine.data import YFinanceFeed, CachedFeed
+from engine.execution.fee_model import PerShareFeeModel
 from engine.analytics.metrics import print_report
 from engine.analytics.chart import plot_backtest
 from strategies.sma_crossover import SMACrossover
@@ -40,7 +41,7 @@ def main():
         start=start,
         end=end,
         initial_cash=100_000.0,
-        commission_rate=0.001,
+        fee_model=PerShareFeeModel(),
         slippage_rate=0.0005,
     )
     portfolio = engine.run()
@@ -54,7 +55,7 @@ def main():
         start=start,
         end=end,
         initial_cash=100_000.0,
-        commission_rate=0.001,
+        fee_model=PerShareFeeModel(),
         slippage_rate=0.0005,
     )
     bench_portfolio = bench_engine.run()
