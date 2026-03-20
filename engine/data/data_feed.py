@@ -22,7 +22,15 @@ class DataFeed(ABC):
 
 
 class YFinanceFeed(DataFeed):
-    """yfinance 数据源（日线）。"""
+    """
+    yfinance 数据源（日线）。
+
+    weekdays_only: 只保留工作日数据（默认 True）。
+    对于 BTC-USD 等 7x24 交易的品种，过滤掉周末数据以对齐其他标的。
+    """
+
+    def __init__(self, weekdays_only: bool = True) -> None:
+        self.weekdays_only = weekdays_only
 
     def fetch(self, symbol: str, start: str, end: str) -> list[Bar]:
         try:
@@ -38,9 +46,13 @@ class YFinanceFeed(DataFeed):
 
         bars: list[Bar] = []
         for ts, row in df.iterrows():
+            dt = ts.to_pydatetime()
+            # 过滤周末 (BTC-USD 等加密货币 7 天交易)
+            if self.weekdays_only and dt.weekday() >= 5:
+                continue
             bars.append(Bar(
                 symbol=symbol,
-                timestamp=ts.to_pydatetime(),
+                timestamp=dt,
                 open=float(row["Open"]),
                 high=float(row["High"]),
                 low=float(row["Low"]),

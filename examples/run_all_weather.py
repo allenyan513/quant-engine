@@ -47,7 +47,8 @@ def main():
     feed = CachedFeed(YFinanceFeed())
 
     # ── 资产宇宙 ──────────────────────────────────────────────
-    universe = [
+    # 两套宇宙对比: 有 BTC vs 无 BTC
+    base_universe = [
         "SPY", "QQQ", "IWM",   # 美股
         "EFA", "EEM",           # 国际
         "TLT", "IEF",           # 债券
@@ -55,11 +56,11 @@ def main():
         "GLD",                  # 黄金
         "VNQ",                  # REITs
     ]
-    safe = "SHY"
-    all_symbols = list(set(universe + [safe]))
+    btc_universe = base_universe + ["BTC-USD"]  # 加入比特币
 
-    strategy_kwargs = dict(
-        universe=universe,
+    safe = "SHY"
+
+    base_kwargs = dict(
         safe_asset=safe,
         momentum_period=126,
         volatility_period=63,
@@ -68,87 +69,113 @@ def main():
         top_k=4,
     )
 
-    # ── 跨周期测试 ────────────────────────────────────────────
-    # DBC 从 2006-02 开始有数据，所以从 2007 开始确保有足够 lookback
-    periods = [
-        ("2007-01-01", "2009-12-31", "Financial Crisis"),
-        ("2010-01-01", "2019-12-31", "Long Bull Market"),
-        ("2020-01-01", "2025-12-31", "COVID + Rate Hikes"),
-        ("2007-01-01", "2025-12-31", "FULL PERIOD (19 years)"),
+    # 两个策略配置
+    configs = [
+        ("All-Weather (no BTC)", dict(universe=base_universe, **base_kwargs)),
+        ("All-Weather + BTC",    dict(universe=btc_universe, **base_kwargs)),
     ]
 
-    all_results = []
+    # BTC-USD 从 2014-09 开始有数据, 需要 200 天 warmup → 从 2016 开始
+    periods = [
+        ("2016-01-01", "2019-12-31", "Pre-COVID Bull"),
+        ("2020-01-01", "2025-12-31", "COVID + Rate Hikes"),
+        ("2016-01-01", "2025-12-31", "FULL PERIOD (10 years)"),
+    ]
+
+    # ── 每个周期跑两套配置 + SPY 基准 ──────────────────────────
+    # results[period_label] = {config_name: (portfolio, metrics, engine)}
+    all_results: dict[str, dict] = {}
 
     for start, end, label in periods:
         print("\n" + "=" * 70)
         print(f"  PERIOD: {label} ({start} ~ {end})")
         print("=" * 70)
 
-        # 策略
-        strat_p, strat_m, strat_e = run_backtest(
-            feed, AllWeatherMomentum, strategy_kwargs,
-            all_symbols, start, end,
-        )
+        period_results = {}
 
-        # 基准: SPY 买入持有
+        for cfg_name, cfg_kwargs in configs:
+            all_symbols = list(set(cfg_kwargs["universe"] + [safe]))
+            p, m, e = run_backtest(
+                feed, AllWeatherMomentum, cfg_kwargs,
+                all_symbols, start, end,
+            )
+            period_results[cfg_name] = (p, m, e)
+
+        # SPY 基准
         bench_p, bench_m, _ = run_backtest(
             feed, BuyAndHold, dict(symbol="SPY", size=500),
             ["SPY"], start, end,
         )
+        period_results["SPY Buy & Hold"] = (bench_p, bench_m, None)
 
-        all_results.append((label, start, end, strat_p, strat_m, bench_p, bench_m, strat_e))
+        all_results[label] = period_results
 
-    # ── 跨周期对比表 ──────────────────────────────────────────
-    print("\n\n" + "=" * 90)
-    print("CROSS-CYCLE VALIDATION: All-Weather Momentum vs SPY Buy & Hold")
-    print("=" * 90)
-    print(f"  {'Period':<28} {'Strategy':>10} {'SPY B&H':>10} {'Strat DD':>10} "
-          f"{'SPY DD':>10} {'Strat SR':>10} {'Winner':>10}")
-    print("  " + "-" * 86)
+    # ── 大对比表 ──────────────────────────────────────────────
+    config_names = [c[0] for c in configs] + ["SPY Buy & Hold"]
 
-    strategy_wins = 0
+    print("\n\n" + "=" * 95)
+    print("CROSS-CYCLE COMPARISON: All-Weather (no BTC) vs All-Weather + BTC vs SPY")
+    print("=" * 95)
+    print(f"  {'Period':<25}", end="")
+    for cn in config_names:
+        print(f" {cn:>20}", end="")
+    print()
+    print("  " + "-" * 90)
 
-    for label, start, end, _, sm, _, bm, _ in all_results:
-        s_ret = sm['total_return']
-        b_ret = bm['total_return']
-        s_dd = sm['max_drawdown']
-        b_dd = bm['max_drawdown']
-        s_sr = sm['sharpe_ratio']
+    for label in [p[2] for p in periods]:
+        pr = all_results[label]
+        print(f"  {label:<25}", end="")
+        for cn in config_names:
+            ret = pr[cn][1]['total_return']
+            print(f" {ret:>20.1%}", end="")
+        print()
 
-        winner = "Strategy" if s_ret > b_ret else "SPY"
-        if s_ret > b_ret:
-            strategy_wins += 1
+    # MaxDD 行
+    print()
+    print(f"  {'MAX DRAWDOWN':<25}", end="")
+    for cn in config_names:
+        # 用 full period
+        full_label = periods[-1][2]
+        dd = all_results[full_label][cn][1]['max_drawdown']
+        print(f" {dd:>20.1%}", end="")
+    print()
 
-        print(f"  {label:<28} {s_ret:>10.1%} {b_ret:>10.1%} {s_dd:>10.1%} "
-              f"{b_dd:>10.1%} {s_sr:>10.2f} {winner:>10}")
+    # Sharpe 行
+    print(f"  {'SHARPE (full period)':<25}", end="")
+    for cn in config_names:
+        full_label = periods[-1][2]
+        sr = all_results[full_label][cn][1]['sharpe_ratio']
+        print(f" {sr:>20.2f}", end="")
+    print()
+    print("  " + "-" * 90)
 
-    print("  " + "-" * 86)
-    print(f"\n  Strategy wins {strategy_wins}/{len(all_results)} periods")
-
-    # ── 全周期详细报告 ────────────────────────────────────────
-    full_label, _, _, full_p, full_m, full_bp, full_bm, full_e = all_results[-1]
+    # ── BTC 版本详细报告 ──────────────────────────────────────
+    full_label = periods[-1][2]
+    btc_name = configs[1][0]
+    btc_p, btc_m, btc_e = all_results[full_label][btc_name]
+    bench_p = all_results[full_label]["SPY Buy & Hold"][0]
 
     print("\n" + "=" * 70)
-    print(f"DETAILED REPORT: {full_label}")
+    print(f"DETAILED REPORT: {btc_name} — {full_label}")
     print("=" * 70)
-    print_report(full_p, benchmark_curve=full_bp.equity_curve)
+    print_report(btc_p, benchmark_curve=bench_p.equity_curve)
 
     print("\nCurrent Holdings:")
-    for sym, pos in full_p.positions.items():
+    for sym, pos in btc_p.positions.items():
         if pos.quantity != 0:
-            bar = full_e.bar_data.current(sym)
+            bar = btc_e.bar_data.current(sym)
             mkt_val = pos.quantity * bar.close if bar else 0
-            pct = mkt_val / full_p.equity * 100
+            pct = mkt_val / btc_p.equity * 100
             print(f"  {sym}: {pos.quantity} shares, "
                   f"${mkt_val:,.0f} ({pct:.1f}%)")
 
-    # ── 可视化 ────────────────────────────────────────────────
+    # ── 可视化: BTC 版本 vs SPY ──────────────────────────────
     plot_backtest(
-        portfolio=full_p,
-        bar_data=full_e.bar_data,
-        benchmark=full_bp,
+        portfolio=btc_p,
+        bar_data=btc_e.bar_data,
+        benchmark=bench_p,
         benchmark_label="SPY Buy & Hold",
-        title="All-Weather Adaptive Momentum vs SPY (2007-2024)",
+        title=f"All-Weather + BTC vs SPY ({periods[-1][0][:4]}-{periods[-1][1][:4]})",
         save_path="backtest_all_weather.png",
         show=False,
     )
