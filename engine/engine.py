@@ -15,6 +15,7 @@ from engine.analytics.metrics import TradeLog
 from engine.core.bar_data import Bar, BarData
 from engine.data.data_feed import DataFeed
 from engine.execution.broker import SimulatedBroker
+from engine.execution.execution_model import ExecutionModel, ImmediateExecution
 from engine.execution.fee_model import FeeModel
 from engine.portfolio.portfolio import Portfolio
 from engine.risk.risk_manager import RiskManager
@@ -40,6 +41,7 @@ class BacktestEngine:
         # 向后兼容
         commission_rate: float | None = None,
         risk_manager: RiskManager | None = None,
+        execution_model: ExecutionModel | None = None,
     ) -> None:
         self.strategy = strategy
         self.data_feed = data_feed
@@ -47,6 +49,7 @@ class BacktestEngine:
         self.start = start
         self.end = end
         self.risk_manager = risk_manager
+        self.execution_model = execution_model or ImmediateExecution()
 
         self.bar_data = BarData()
         self.portfolio = Portfolio(initial_cash=initial_cash)
@@ -176,18 +179,23 @@ class BacktestEngine:
         return self.portfolio
 
     def _submit_with_risk_check(self, order) -> None:
-        """提交订单，如果有 RiskManager 则先做风控检查。"""
-        if self.risk_manager is None:
-            self.broker.submit_order(order)
-            return
+        """提交订单: RiskManager 过滤 → ExecutionModel 拆分 → Broker 提交。"""
+        # 1. 风控检查
+        if self.risk_manager is not None:
+            result = self.risk_manager.check_order(
+                order, self.portfolio, self.bar_data,
+            )
+            if not result.approved:
+                return
+            if result.adjusted_order is not None:
+                order = result.adjusted_order
 
-        result = self.risk_manager.check_order(
+        # 2. 执行模型拆分
+        sub_orders = self.execution_model.execute(
             order, self.portfolio, self.bar_data,
         )
-        if result.approved:
-            self.broker.submit_order(
-                result.adjusted_order if result.adjusted_order else order
-            )
+        for sub in sub_orders:
+            self.broker.submit_order(sub)
 
     def _fetch_spy_benchmark(self) -> list[tuple[datetime, float]] | None:
         """自动获取 SPY 数据，构建基准净值曲线（与 QC 一致）。"""
