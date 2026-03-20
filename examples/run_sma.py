@@ -24,7 +24,7 @@ def main():
     # ── 策略 ──────────────────────────────────────────────────
     symbol = "AAPL"
     start = "2023-01-01"
-    end = "2024-12-31"
+    end = "2025-12-31"
 
     strategy = SMACrossover(
         symbol=symbol,

@@ -40,7 +40,7 @@ def main():
     ]
 
     start = "2015-01-01"
-    end = "2024-12-31"
+    end = "2025-12-31"
 
     # ── 数据源 (带缓存) ──────────────────────────────────────
     feed = CachedFeed(YFinanceFeed(), cache_dir="data_cache")

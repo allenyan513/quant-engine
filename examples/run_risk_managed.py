@@ -125,7 +125,7 @@ class RiskManagedBreakout(BaseStrategy):
 def main():
     symbol = "AAPL"
     start = "2022-01-01"
-    end = "2024-12-31"
+    end = "2025-12-31"
     feed = CachedFeed(YFinanceFeed())
 
     strategy = RiskManagedBreakout(

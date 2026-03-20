@@ -73,8 +73,8 @@ def main():
     periods = [
         ("2007-01-01", "2009-12-31", "Financial Crisis"),
         ("2010-01-01", "2019-12-31", "Long Bull Market"),
-        ("2020-01-01", "2024-12-31", "COVID + Rate Hikes"),
-        ("2007-01-01", "2024-12-31", "FULL PERIOD (18 years)"),
+        ("2020-01-01", "2025-12-31", "COVID + Rate Hikes"),
+        ("2007-01-01", "2025-12-31", "FULL PERIOD (19 years)"),
     ]
 
     all_results = []

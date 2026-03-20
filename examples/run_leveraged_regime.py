@@ -28,7 +28,7 @@ from strategies.buy_and_hold import BuyAndHold
 
 def main():
     start = "2015-01-01"
-    end = "2024-12-31"
+    end = "2025-12-31"
     feed = CachedFeed(YFinanceFeed())
 
     all_symbols = ["TQQQ", "SQQQ", "QQQ", "SPY", "SHY"]

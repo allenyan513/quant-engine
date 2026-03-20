@@ -83,7 +83,7 @@ def main():
         data_feed=feed,
         symbols=[symbol],
         start="2022-01-01",
-        end="2024-12-31",
+        end="2025-12-31",
         initial_cash=100_000.0,
     )
     portfolio3 = engine3.run()
