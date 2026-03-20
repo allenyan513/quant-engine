@@ -34,25 +34,32 @@ def main():
     # ── 配置矩阵: 测试多种参数组合 ─────────────────────────
     configs = [
         {
-            "name": "QQQ/SPY Dual Momentum (6mo, SMA200)",
-            "offensive": ["QQQ", "SPY"],
-            "defensive": "SHY",
-            "momentum_period": 126,
-            "regime_sma": 200,
-        },
-        {
-            "name": "QQQ/SPY Dual Momentum (3mo, SMA150)",
-            "offensive": ["QQQ", "SPY"],
-            "defensive": "SHY",
-            "momentum_period": 63,
-            "regime_sma": 150,
-        },
-        {
             "name": "QQQ only + SMA200 Filter",
             "offensive": ["QQQ"],
             "defensive": "SHY",
             "momentum_period": 126,
             "regime_sma": 200,
+        },
+        {
+            "name": "TQQQ only + SMA200 Filter",
+            "offensive": ["TQQQ"],
+            "defensive": "SHY",
+            "momentum_period": 126,
+            "regime_sma": 200,
+        },
+        {
+            "name": "TQQQ/QQQ Dual Mom (6mo, SMA200)",
+            "offensive": ["TQQQ", "QQQ"],
+            "defensive": "SHY",
+            "momentum_period": 126,
+            "regime_sma": 200,
+        },
+        {
+            "name": "TQQQ only + SMA150 Filter",
+            "offensive": ["TQQQ"],
+            "defensive": "SHY",
+            "momentum_period": 126,
+            "regime_sma": 150,
         },
     ]
 

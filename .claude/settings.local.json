@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -m examples.run_sma)",
+      "Bash(git init:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh repo:*)",
+      "Bash(git push:*)",
+      "Bash(python -m pytest tests/ -v)",
+      "mcp__Desktop_Commander__list_directory",
+      "Bash(wc -l /Users/alin/Github/quant-engine/engine/core/*.py /Users/alin/Github/quant-engine/engine/execution/*.py /Users/alin/Github/quant-engine/engine/portfolio/*.py /Users/alin/Github/quant-engine/engine/strategy/*.py /Users/alin/Github/quant-engine/engine/data/*.py /Users/alin/Github/quant-engine/engine/analytics/*.py)",
+      "Bash(python -m examples.run_risk_managed)",
+      "Bash(git reset:*)",
+      "mcp__Desktop_Commander__get_file_info",
+      "Bash(python -m pytest tests/test_cached_feed.py -v)",
+      "Bash(python -m examples.run_cached)",
+      "Bash(python -m examples.run_etf_momentum)",
+      "Bash(python -m pytest tests/test_etf_momentum.py -v)",
+      "Bash(python -m examples.run_dual_momentum)",
+      "Bash(python -m examples.run_leveraged_regime)"
+    ]
+  }
+}
