@@ -12,3 +12,6 @@ data_cache/
 .DS_Store
 *.csv
 outputs/
+web/data/*.db
+web/frontend/node_modules/
+web/frontend/.next/
